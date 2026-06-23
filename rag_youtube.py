@@ -4,7 +4,7 @@ import os
 import tempfile
 from urllib.parse import urlparse, parse_qs
 from youtube_transcript_api import YouTubeTranscriptApi
-from youtube_transcript_api._errors import TranscriptsDisabled, RequestBlocked, NoTranscriptFound
+from youtube_transcript_api._errors import TranscriptsDisabled
 from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import FAISS
@@ -64,8 +64,8 @@ def extract_video_id(url):
 
 def fetch_transcript(video_id):
     """
-    Fetches transcript. On Streamlit Cloud, YouTube blocks direct requests.
-    We bypass this by passing browser cookies stored in st.secrets.
+    Fetches transcript using v0.6.x class-method API.
+    Passes cookies to bypass YouTube cloud IP blocking.
     """
     cookie_file_path = None
 
@@ -79,32 +79,32 @@ def fetch_transcript(video_id):
             tmp.close()
             cookie_file_path = tmp.name
 
+        # Build kwargs — only pass cookies if available
+        kwargs = {}
         if cookie_file_path:
-            api = YouTubeTranscriptApi(cookies=cookie_file_path)
-        else:
-            api = YouTubeTranscriptApi()
+            kwargs["cookies"] = cookie_file_path
 
-        transcript_list = api.fetch(video_id)
-        transcript = " ".join(chunk.text for chunk in transcript_list)
+        # v0.6.3 class method — returns list of dicts [{'text': ..., 'start': ..., 'duration': ...}]
+        transcript_data = YouTubeTranscriptApi.get_transcript(video_id, **kwargs)
+        transcript = " ".join(item["text"] for item in transcript_data)
         return transcript, None
 
-    except RequestBlocked:
-        return None, (
-            "⛔ **YouTube blocked this request.**\n\n"
-            "Streamlit Cloud's servers are recognized as bots by YouTube. "
-            "To fix this, add your YouTube browser cookies as a Streamlit secret "
-            "named `YOUTUBE_COOKIES`. See the sidebar for instructions."
-        )
     except TranscriptsDisabled:
         return None, "❌ This video has **captions disabled**. Try a different video."
-    except NoTranscriptFound:
-        return None, "❌ **No transcript found** for this video. It may not have captions."
     except Exception as e:
-        return None, f"❌ Unexpected error: {str(e)}"
+        err_msg = str(e)
+        if "blocked" in err_msg.lower() or "RequestBlocked" in type(e).__name__:
+            return None, (
+                "⛔ **YouTube blocked this request.**\n\n"
+                "Add your YouTube cookies as `YOUTUBE_COOKIES` in Streamlit Secrets. "
+                "See the sidebar for instructions."
+            )
+        return None, f"❌ Unexpected error: {err_msg}"
 
     finally:
         if cookie_file_path and os.path.exists(cookie_file_path):
             os.unlink(cookie_file_path)
+
 
 
 # -----------------------------
