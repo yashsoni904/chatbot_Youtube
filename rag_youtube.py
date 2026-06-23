@@ -10,8 +10,12 @@ from langchain_core.prompts import PromptTemplate
 from langchain_core.runnables import RunnableParallel , RunnablePassthrough, RunnableLambda
 from langchain_core.output_parsers import StrOutputParser
 from dotenv import load_dotenv
+import os
 
+# Load API key: Streamlit Cloud secrets take priority, fallback to .env for local dev
 load_dotenv()
+if "GOOGLE_API_KEY" in st.secrets:
+    os.environ["GOOGLE_API_KEY"] = st.secrets["GOOGLE_API_KEY"]
 
 # -----------------------------
 # LLM
